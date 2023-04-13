@@ -1,87 +1,177 @@
 const express = require("express")
-const app = express()
 const cors = require('cors')
-//const { initializeApp } = require("firebase/app")
-//const { getDatabase } = require("firebase/database")
-const admin = require('firebase-admin')
-//const serviceAccount = require("path/to/serviceAccountKey.json");
-
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-  databaseURL: 'https://pruebita-dfb8f-default-rtdb.firebaseio.com'
-})
-
-const db = admin.database();
-
+const { initializeApp } = require("firebase/app")
+const {getFirestore,collection, setDoc, doc, getDoc, getDocs, updateDoc} = require("firebase/firestore")
 require ("dotenv/config")
 
-/*const firebaseConfig = {
-  apiKey: "AIzaSyD894EcKYiEAANr1OSqBzyxbl8Gqc-ZJ_A",
-  authDomain: "pruebita-dfb8f.firebaseapp.com",
-  databaseURL: "https://pruebita-dfb8f-default-rtdb.firebaseio.com",
-  projectId: "pruebita-dfb8f",
-  storageBucket: "pruebita-dfb8f.appspot.com",
-  messagingSenderId: "901837454214",
-  appId: "1:901837454214:web:6999288b2551eb70cdca07"
-  }
-const firebase = initializeApp(firebaseConfig)*/
+const firebaseConfig = {
+  apiKey: "AIzaSyA7oYeDSWWAv9Wm5LQJw4Vy_wqHWJYyEKw",
+  authDomain: "pc-doctor-79eb6.firebaseapp.com",
+  databaseURL: "https://pc-doctor-79eb6-default-rtdb.firebaseio.com",
+  projectId: "pc-doctor-79eb6",
+  storageBucket: "pc-doctor-79eb6.appspot.com",
+  messagingSenderId: "986732369790",
+  appId: "1:986732369790:web:a07b247e310cc01f38052f"
+};
 
+//Inicializar BD con firebase
+const firebase = initializeApp(firebaseConfig)
+const db = getFirestore()
+
+//inicializar el servidor
+const app = express()
 app.use(express.json())
 
 const corsOption = {
-    origin: '*',
-    optionSuccessStatus: 200
-  }
+  origin: '*',
+  optionSuccessStatus: 200
+}
 app.use(cors(corsOption))
 
+//Rutas :)
+
 app.post('/registro',(req,res) =>{
-    const {nombre, usuario, email, contraseña, tipo_usuario} = req.body
-    if(nombre.length < 3){
+    const {nombre, usuario, email, contraseña, conContraseña, tipo_usuario} = req.body
+    const patron = /^(([^<>()[\]\.,;:\s@\"]+(\.[^<>()[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i
+    const correo_valido = patron.test(email)
+    if(nombre.length < 1){
         res.json({
-          'alert':'El nombre debe ser mayor a 3 caracteres'
+          'alert':'Debes de escribir un nombre'
         })
-      }else if(usuario.length < 3){
+      }else if(usuario.length < 1){
         res.json({
-            'alert':'El usuario debe ser mayor a 3 caracteres'
+            'alert':'Debes de escribir un usuario'
           })
+      }else if(email.length < 1){
+        res.json({
+          'alert':'Debes de escribir un correo'
+        })
+      }else if(correo_valido!=true){
+        res.json({
+          'alert':'Debes de escribir un correo valido'
+        })
+      }else if(contraseña.length < 6){
+        res.json({
+          'alert':'Debes de escribir una contraseña valida'
+        })
+      }else if(conContraseña.length < 1){
+        res.json({
+          'alert':'Debes de confirmar una contraseña'
+        })
+      }else if(contraseña!=conContraseña){
+        res.json({
+          'alert':'Las contraseñas deben de coincidir'
+        })
+      }else if(tipo_usuario.length < 1){
+        res.json({
+          'alert':'Debes de seleccionar tu tipo de usuario'
+        })
+      }else{
+        req.body = {nombre, usuario, email, contraseña, tipo_usuario}
+        const users = collection(db, 'users')
+        getDoc(doc(users,email)).then(user =>{
+          if(user.exists()){
+            res.json({
+              'alert':'EL correo ya existe aqui'
+            })
+          }else{
+            setDoc(doc(users,email),req.body).then(()=>{
+              res.json({
+                'alert':'Exito'
+              })
+            })
+          }
+        })
       }
+})
+
+app.post('/login',(req,res)=>{
+  const {email,contraseña}=req.body
+  if (!email.length || !contraseña.length){
+    return res.json({
+      'alert':'no se han recibido los datos correctamente'
+    })
+  }
+  const users = collection(db, 'users')
+  getDoc(doc(users,email))
+  .then( user=>{
+    if (!user.exists()) {
+      return res.json({
+        'alert': 'correo no registrado'
+      })
+    }else{
+      if(contraseña!=user.data().contraseña){
+        res.json({
+          'alert':'Contraseña incorrecta'
+        })          
+      }else{
+        res.json({
+          'alert':'Exito',
+          nombre:user.data().nombre,
+          email:user.data().email
+        })
+      }
+    }
+  })
+})
+
+app.get('/info_usuario', async(req, res) =>{
+  const {email} = req.body
+  const reference = collection(db,'users')
+  let docsSnap = await getDocs(reference)
+  let data = []
+  docsSnap.forEach(doc=>{
+    if(doc.data().email==email)
+    data.push(doc.data())
+  })
+  if(data[0] == null){
+    res.json({
+      'alert':'No se encontro un usuario'
+    })
+  }else{
+    res.json({
+      'alert':'Exito',
+      'nombre':data[0].nombre,
+      'usuario':data[0].usuario,
+      'email':data[0].email,
+      'tipo_usuario':data[0].tipo_usuario,
+      'contraseña':data[0].contraseña
+    })
+  }
+})
+
+app.post('/editar_usuario',(req, res) =>{
+  const {nombre, usuario, email, contraseña} = req.body
+if(nombre.length < 1){
+  res.json({
+    'alert':'Debes de escribir un nombre'
+  })
+}else if(usuario.length < 1){
+    res.json({
+      'alert':'Debes de escribir un usuario'
+    })
+}else if(contraseña.length < 6){
+  res.json  ({
+    'alert':'Debes de escribir un contraseña valida'
+  })
+}else{
+  const users = collection(db, 'users')
+  setDoc(doc(users,email),req.body).then(()=>{
+    res.json({
+      'alert':'Exito'
+    })
+  })
+}
 })
 
 app.post('/prueba',(req,res)=>{
   const {cosa1,cosa2,cosa3}=req.body
   console.log(req.body)
-  //const db = getDatabase()
-  const nuevoUsuario = {
-    dato1: req.body.cosa1,
-    dato2: req.body.cosa2,
-    dato3: req.body.cosa3
-  }
-  const ref = db.ref('usuarios').push(nuevoUsuario) 
-
-  /*const usersRef = ref.child('users')
-  usersRef.child(req.body.dato1).set({
-    dato1: req.body.dato1,
-    dato2: req.body.dato2,
-    dato3: req.body.dato3
-  })*/
-  /*const { getDatabase, ref, set } = require("firebase/database")
-  function writeUserData() {
-    const db = getDatabase();
-    set(ref(db, 'users/' + req.body.cosa1), {
-      dato1: req.body.cosa1,
-      dato2: req.body.cosa2,
-      dato3 : req.body.cosa3
+  const users = collection(db, 'users')
+  setDoc(doc(users,cosa2),req.body).then(()=>{
+    res.json({
+      'alert':'Exito'
     })
-  }*/
-  /*database.ref("hola").set(req,function(error){
-    if(error){
-      console.log('Error'+error)
-    }else{
-      console.log('ok :)')
-    }
-  })*/
-  res.json({
-    'alert':'Sucess '//+dato1+dato2+dato3
   })
 })
 
